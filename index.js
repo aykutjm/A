@@ -1,10 +1,9 @@
-const { default: makeWASocket, useSingleFileAuthState } = require('@whiskeysockets/baileys');
+const makeWASocket = require('@whiskeysockets/baileys').default;
+const { useSingleFileAuthState } = require('@whiskeysockets/baileys/auth');
 const { Boom } = require('@hapi/boom');
 const fs = require('fs');
-const path = require('path');
 
-const authFile = './auth_info.json';
-const { state, saveState } = useSingleFileAuthState(authFile);
+const { state, saveState } = useSingleFileAuthState('./auth_info.json');
 
 async function startSock() {
     const sock = makeWASocket({
@@ -26,11 +25,10 @@ async function startSock() {
     });
 
     sock.ev.on('messages.upsert', async (m) => {
-        console.log(JSON.stringify(m, undefined, 2));
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
-        await sock.sendMessage(msg.key.remoteJid, { text: 'Merhaba, mesajınızı aldım! 🤖' });
+        await sock.sendMessage(msg.key.remoteJid, { text: 'Merhaba! 🤖' });
     });
 
     sock.ev.on('creds.update', saveState);
