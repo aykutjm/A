@@ -1,60 +1,39 @@
-const {
-    default: makeWASocket,
-    useSingleFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion
-} = require('@whiskeysockets/baileys');
-
+const { default: makeWASocket, useSingleFileAuthState } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const fs = require('fs');
 const path = require('path');
 
-// Auth dosyası yolu
 const authFile = './auth_info.json';
 const { state, saveState } = useSingleFileAuthState(authFile);
 
-// Bağlantıyı başlat
 async function startSock() {
-    const { version } = await fetchLatestBaileysVersion();
     const sock = makeWASocket({
-        version,
-        printQRInTerminal: true,
         auth: state,
+        printQRInTerminal: true
     });
 
-    // QR kod çıktısı (deprecate edildiği için ayrıca loglamak iyi olur)
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-            console.log('\n📱 QR Kodunu Tara:\n', qr);
-        }
-
+        const { connection, lastDisconnect } = update;
         if (connection === 'close') {
-            const shouldReconnect =
-                (lastDisconnect?.error instanceof Boom
-                    ? lastDisconnect.error.output?.statusCode
-                    : 0) !== DisconnectReason.loggedOut;
-
-            console.log('❌ Bağlantı koptu. Tekrar bağlanılıyor mu?', shouldReconnect);
-
+            const shouldReconnect = (lastDisconnect.error = Boom)?.output?.statusCode !== 401;
+            console.log('connection closed, reconnecting...', shouldReconnect);
             if (shouldReconnect) {
                 startSock();
             }
         } else if (connection === 'open') {
-            console.log('✅ Bot WhatsApp’a bağlandı!');
+            console.log('opened connection');
         }
     });
 
-    // Mesaj geldiğinde yakala
-    sock.ev.on('messages.upsert', async ({ messages }) => {
-        const msg = messages[0];
-        if (!msg.message) return;
+    sock.ev.on('messages.upsert', async (m) => {
+        console.log(JSON.stringify(m, undefined, 2));
+        const msg = m.messages[0];
+        if (!msg.message || msg.key.fromMe) return;
 
-        const from = msg.key.remoteJid;
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        await sock.sendMessage(msg.key.remoteJid, { text: 'Merhaba, mesajınızı aldım! 🤖' });
+    });
 
-        console.log('📩 Gelen mesaj:', text);
+    sock.ev.on('creds.update', saveState);
+}
 
-        // Basit cevap örneği
-        if (text.toLowerCase().includes('selam')) {
+startSock();
