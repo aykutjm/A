@@ -1,37 +1,45 @@
-const makeWASocket = require('@whiskeysockets/baileys').default;
-const { useSingleFileAuthState } = require('@whiskeysockets/baileys/auth');
-const { Boom } = require('@hapi/boom');
-const fs = require('fs');
+const { default: makeWASocket } = require("@whiskeysockets/baileys");
+const { useSingleFileAuthState } = require("@whiskeysockets/baileys/lib/auth");
+const { Boom } = require("@hapi/boom");
+const path = require("path");
 
-const { state, saveState } = useSingleFileAuthState('./auth_info.json');
+const authFile = path.resolve(__dirname, "auth_info.json");
+const { state, saveState } = useSingleFileAuthState(authFile);
 
 async function startSock() {
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: true
-    });
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: true,
+  });
 
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
-        if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect.error = Boom)?.output?.statusCode !== 401;
-            console.log('connection closed, reconnecting...', shouldReconnect);
-            if (shouldReconnect) {
-                startSock();
-            }
-        } else if (connection === 'open') {
-            console.log('opened connection');
-        }
-    });
+  sock.ev.on("connection.update", (update) => {
+    const { connection, lastDisconnect, qr } = update;
+    if (connection === "close") {
+      const shouldReconnect =
+        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log("connection closed due to", lastDisconnect?.error, ", reconnecting", shouldReconnect);
+      if (shouldReconnect) {
+        startSock();
+      }
+    } else if (connection === "open") {
+      console.log("opened connection ✅");
+    }
+  });
 
-    sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return;
+  sock.ev.on("creds.update", saveState);
 
-        await sock.sendMessage(msg.key.remoteJid, { text: 'Merhaba! 🤖' });
-    });
+  sock.ev.on("messages.upsert", async ({ messages }) => {
+    const msg = messages[0];
+    if (!msg.message) return;
+    const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
+    console.log("Gelen mesaj:", text);
 
-    sock.ev.on('creds.update', saveState);
+    if (text?.toLowerCase() === "merhaba") {
+      await sock.sendMessage(msg.key.remoteJid, {
+        text: "Merhaba! Size nasıl yardımcı olabilirim? 😊",
+      });
+    }
+  });
 }
 
 startSock();
